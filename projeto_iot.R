@@ -9,11 +9,16 @@ getwd()
 
 #carregando os pacotes a serem utilizados
 
-library("dplyr")
-library("tidyr")
-library('ggplot2')
-library('corrplot')
-library('lubridate')
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(corrplot)
+library(lubridate)
+library(party)
+library(randomForest)
+library(Metrics)
+library(CatEncoders)
+library(xgboost)
 
 #para descarrecar o pacote:
 'detach(package:tidyr, unload=TRUE)'
@@ -34,6 +39,11 @@ View(df_teste)
 #somente duas variáveis são caracteres: Day_of_week e WeekStatus
 
 summary(df_treino)
+
+#É possível observar que a variável Appliances apresenta média bastante diferente
+#da mediana e valor máximo podendo indicar presença de valores outliers. 
+
+
 
 #----------------------ANÁLISE EXPLORATÓRIA DOS DADOS-------------------------#
 
@@ -119,15 +129,56 @@ plot3
 df_treino$horario <- hour(df_treino$date)
 df_treino$mes <- month(df_treino$date)
 
-plot4 <- ggplot(df_treino, aes(x=horario2, y=mean(Appliances))) + 
+plot4 <- ggplot(df_treino, aes(x=horario, y=mean(Appliances))) + 
   geom_bar(stat = "identity", color='black')
 
 plot4
 
+#---------------------------ESCALONANDO VARIÁVEIS------------------------------#
+
+#Variáveis numéricas
+scale(df_treino[,2:30], center = TRUE, scale = TRUE)
+?attributes
+
+mean(df_treino[,2])
+sd(df_treino[,2])
+
+#Variáveis categóricas
+labels = LabelEncoder.fit(variavel)
+variaveis = transform(labels, variavel)
+
+
+
+#unscaled <- scaled*sd + m
+
+
+
+#---------------------------ATRIBUTOS IMPORTANTES------------------------------#
+
+random_forest <- randomForest(Appliances ~ . ,data = df_treino, ntree = 500,
+                              importance= TRUE, type)
+
+xgboost()
+
+summary(random_forest)
+
+randomForest::importance(random_forest)
+
+
+saveRDS(random_forest, "random_forest_iot.rds")
+
+modelo_v1 <- readRDS("random_forest_iot.rds")
+
+
+previsoes <- predict(random_forest, df_teste[-2])
+
+r_mse <- rmse(df_teste[,2], previsoes)
+mean_squared_error <- mse(df_teste[,2], previsoes)
+
+r_mse 
+mean_squared_error
 
 #parei aqui
-
-
 
 
            
