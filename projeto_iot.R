@@ -4,7 +4,7 @@
 
 
 #Setando o diretório do projeto
-#setwd("machine_learning/Datasets e projetos/Projetos-7-8/Projeto 8/Modelagem_Preditiva_em_IoT/")
+setwd("machine_learning/Datasets e projetos/Projetos-7-8/Projeto 8/Modelagem_Preditiva_em_IoT/")
 getwd()
 
 #carregando os pacotes a serem utilizados
@@ -28,6 +28,9 @@ library(xgboost)
 
 df_treino <- read.csv("projeto8-data_files/projeto8-training.csv") 
 df_teste <- read.csv("projeto8-data_files/projeto8-testing.csv")
+
+X_treino <- df_treino[,3:32]
+y_treino <- df_treino[2]
 
 
 #Verificando o dataset e os tipos de dados apresentados pelo dataset
@@ -53,10 +56,11 @@ sum(is.na(df_treino)) #Não!
 
 #Vamos observar a distribuição gráficas dos atributos numéricos do dataset
 
-df_num <- df_treino[,2:30]
+df_num <- X_treino[,1:28]
 
-df_num_long <- df_num %>%
-  pivot_longer(cols = colnames(df_num))
+
+df_num_long <- X_treino[,1:28] %>%
+  pivot_longer(cols = colnames(X_treino[,1:28]))
 
 View(df_num_long)
 
@@ -76,8 +80,6 @@ plot2 <- ggplot(df_num_long, aes(x = value)) +
   facet_wrap( ~ name, scales = "free")
 
 plot2
-
-
 
 
 #Observando a correlação entre as variáveis numéricas
@@ -137,15 +139,20 @@ plot4
 #---------------------------ESCALONANDO VARIÁVEIS------------------------------#
 
 #Variáveis numéricas
-scale(df_treino[,2:30], center = TRUE, scale = TRUE)
-?attributes
+X_treino <- scale(X_treino[,1:28], center = TRUE, scale = TRUE)
+X_treino <- as.data.frame(X_treino)
 
 mean(df_treino[,2])
 sd(df_treino[,2])
 
 #Variáveis categóricas
-labels = LabelEncoder.fit(variavel)
-variaveis = transform(labels, variavel)
+labels1 <- LabelEncoder.fit(df_treino$WeekStatus)
+X_treino$week_status <- transform(labels1, df_treino$WeekStatus)
+
+labels2 <- LabelEncoder.fit(df_treino$Day_of_week)
+X_treino$week_day <- transform(labels2, df_treino$Day_of_week)
+
+df_treino <- cbind(X_treino, y_treino)
 
 
 
@@ -156,9 +163,9 @@ variaveis = transform(labels, variavel)
 #---------------------------ATRIBUTOS IMPORTANTES------------------------------#
 
 random_forest <- randomForest(Appliances ~ . ,data = df_treino, ntree = 500,
-                              importance= TRUE, type)
+                              importance= TRUE)
 
-xgboost()
+random_forest
 
 summary(random_forest)
 
