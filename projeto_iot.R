@@ -29,14 +29,10 @@ library(xgboost)
 df_treino <- read.csv("projeto8-data_files/projeto8-training.csv") 
 df_teste <- read.csv("projeto8-data_files/projeto8-testing.csv")
 
-X_treino <- df_treino[,3:32]
-y_treino <- df_treino[2]
-
 
 #Verificando o dataset e os tipos de dados apresentados pelo dataset
 
 View(df_treino)
-View(df_teste)
 
 #Observa se que o dataset é composto majoritariamente por variáveis numéricas,
 #somente duas variáveis são caracteres: Day_of_week e WeekStatus
@@ -56,11 +52,11 @@ sum(is.na(df_treino)) #Não!
 
 #Vamos observar a distribuição gráficas dos atributos numéricos do dataset
 
-df_num <- X_treino[,1:28]
+df_num <- df_treino[,2:30]
 
 
-df_num_long <- X_treino[,1:28] %>%
-  pivot_longer(cols = colnames(X_treino[,1:28]))
+df_num_long <- df_num %>%
+  pivot_longer(cols = colnames(df_num))
 
 View(df_num_long)
 
@@ -69,6 +65,7 @@ plot1 <- ggplot(df_num_long, aes(x = value)) + #Plota histogramas individuais
   facet_wrap( ~ name, scales = "free") #scale = "free" gera eixos independentes
 
 plot1
+
 #Os dados numéricos apresentam uma distribuição aproximadamente normal para a
 #maioria das variáveis, com exceção das variáveis randômicas introduzidas no 
 #dataset e de algumas outras variáveis como a appliance, lights e RH_out
@@ -80,6 +77,11 @@ plot2 <- ggplot(df_num_long, aes(x = value)) +
   facet_wrap( ~ name, scales = "free")
 
 plot2
+
+#Em vista que a variável preditora apresenta muitos valores outliers, iremos
+#filtrar o consumo para < 150 KW
+
+df_treino <- df_treino %>% filter(Appliances < 150)
 
 
 #Observando a correlação entre as variáveis numéricas
@@ -138,22 +140,24 @@ plot4
 
 #---------------------------ESCALONANDO VARIÁVEIS------------------------------#
 
-#Variáveis numéricas
-X_treino <- scale(X_treino[,1:28], center = TRUE, scale = TRUE)
-X_treino <- as.data.frame(X_treino)
+#                            VARIÁVEIS NUMÉRICAS
 
-mean(df_treino[,2])
-sd(df_treino[,2])
+#obs: Irei salvar a média e desvio padrão para retornar a variável ao valor normal
+
+media <- mean(df_treino[,2])
+desvio <- sd(df_treino[,2])
+
+df_treino_esc <- scale(df_treino[,2:30], center = TRUE, scale = TRUE)
+df_treino_esc <- as.data.frame(df_treino_esc)
+
 
 #Variáveis categóricas
+
 labels1 <- LabelEncoder.fit(df_treino$WeekStatus)
-X_treino$week_status <- transform(labels1, df_treino$WeekStatus)
+df_treino_esc$WeekStatus <- transform(labels1, df_treino$WeekStatus)
 
 labels2 <- LabelEncoder.fit(df_treino$Day_of_week)
-X_treino$week_day <- transform(labels2, df_treino$Day_of_week)
-
-df_treino <- cbind(X_treino, y_treino)
-
+df_treino_esc$Day_of_week <- transform(labels2, df_treino$Day_of_week)
 
 
 #unscaled <- scaled*sd + m
@@ -162,28 +166,42 @@ df_treino <- cbind(X_treino, y_treino)
 
 #---------------------------ATRIBUTOS IMPORTANTES------------------------------#
 
-random_forest <- randomForest(Appliances ~ . ,data = df_treino, ntree = 500,
+random_forest <- randomForest(Appliances ~ . ,data = df_treino_esc, ntree = 500,
                               importance= TRUE)
 
-random_forest
-
 summary(random_forest)
+importance(random_forest)
 
-randomForest::importance(random_forest)
+#------------------------------------------------------------------------------#
 
 
 saveRDS(random_forest, "random_forest_iot.rds")
 
 modelo_v1 <- readRDS("random_forest_iot.rds")
 
+#------------------------------------------------------------------------------#
+#                     PREPARANDO OS DADOS DE TESTE
 
-previsoes <- predict(random_forest, df_teste[-2])
+df_teste_esc <- scale(df_teste[,2:30], center = TRUE, scale = TRUE)
+df_teste_esc <- as.data.frame(df_teste_esc)
+labels3 <- LabelEncoder.fit(df_teste$WeekStatus)
+df_teste_esc$WeekStatus <- transform(labels3, df_teste$WeekStatus)
+labels4 <- LabelEncoder.fit(df_teste$Day_of_week)
+df_teste_esc$Day_of_week <- transform(labels4, df_teste$Day_of_week)
 
-r_mse <- rmse(df_teste[,2], previsoes)
-mean_squared_error <- mse(df_teste[,2], previsoes)
+
+#------------------------------------------------------------------------------#
+#                   REALIZANDO PREVISÕES COM MODELO BASE
+
+previsoes <- predict(modelo_v1, df_teste_esc[-1])
+
+r_mse <- rmse(df_teste_esc[,1], previsoes)
+mean_squared_error <- mse(df_teste_esc[,1], previsoes)
 
 r_mse 
 mean_squared_error
+#------------------------------------------------------------------------------#
+
 
 #parei aqui
 
