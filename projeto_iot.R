@@ -7,6 +7,7 @@
 setwd("machine_learning/Datasets e projetos/Projetos-7-8/Projeto 8/Modelagem_Preditiva_em_IoT/")
 getwd()
 
+#---------------------------CARREGANDO OS PACOTES------------------------------#
 #carregando os pacotes a serem utilizados
 
 library(dplyr)
@@ -18,13 +19,14 @@ library(party)
 library(randomForest)
 library(Metrics)
 library(CatEncoders)
-library(xgboost)
+library(caret)
+library(h2o)
+library(performance)
 
-#para descarrecar o pacote:
-'detach(package:tidyr, unload=TRUE)'
 
+#---------------------------CARREGANDO OS DADOS--------------------------------#
 
-#Carregando os dados
+#Os dados fornecidos já estão divididos entre treino e teste:
 
 df_treino <- read.csv("projeto8-data_files/projeto8-training.csv") 
 df_teste <- read.csv("projeto8-data_files/projeto8-testing.csv")
@@ -44,7 +46,7 @@ summary(df_treino)
 
 
 
-#----------------------ANÁLISE EXPLORATÓRIA DOS DADOS-------------------------#
+#-----------------------ANÁLISE EXPLORATÓRIA DOS DADOS-------------------------#
 
 #dataset apresenta valores ausentes?
 
@@ -113,7 +115,7 @@ consumo_por_dia <- df_treino %>%
 consumo_por_dia
 
 plot3 <- ggplot(consumo_por_dia, aes(x=Day_of_week, y=consumo)) + 
-  geom_bar(stat = "identity", color='black')
+  geom_bar(stat = "identity")
 
 plot3
 
@@ -134,7 +136,7 @@ df_treino$horario <- hour(df_treino$date)
 df_treino$mes <- month(df_treino$date)
 
 plot4 <- ggplot(df_treino, aes(x=horario, y=mean(Appliances))) + 
-  geom_bar(stat = "identity", color='black')
+  geom_bar(stat = "identity")
 
 plot4
 
@@ -149,6 +151,12 @@ desvio <- sd(df_treino[,2])
 
 df_treino_esc <- scale(df_treino[,2:30], center = TRUE, scale = TRUE)
 df_treino_esc <- as.data.frame(df_treino_esc)
+
+#usando CARET
+?preProcess
+pipeline <- preProcess(df_treino[,2:30], method = c("center", "scale"))
+df_treino_esc<- predict(pipeline, df_treino[,2:30])
+df_teste_esc <- predict(pipeline, df_teste[,2:30])
 
 
 #Variáveis categóricas
@@ -201,7 +209,11 @@ mean_squared_error <- mse(df_teste_esc[,1], previsoes)
 r_mse 
 mean_squared_error
 #------------------------------------------------------------------------------#
+#               TREINANDO UM MODELO DE GRADIENTE BOOSTING
 
+
+gradient_boosting <- h2o.gbm()
+check_model
 
 #parei aqui
 
