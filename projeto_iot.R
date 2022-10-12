@@ -4,7 +4,7 @@
 
 
 #Setando o diretório do projeto
-setwd("machine_learning/Datasets e projetos/Projetos-7-8/Projeto 8/Modelagem_Preditiva_em_IoT/")
+setwd("Projeto 8/Modelagem_Preditiva_em_IoT/")
 getwd()
 
 #---------------------------CARREGANDO OS PACOTES------------------------------#
@@ -72,7 +72,8 @@ plot1
 #maioria das variáveis, com exceção das variáveis randômicas introduzidas no 
 #dataset e de algumas outras variáveis como a appliance, lights e RH_out
 
-#Visualizando box-plots para observar valores outliers
+#-----------------------------------------------------------------------------#
+#         Visualizando box-plots para observar valores outliers
 
 plot2 <- ggplot(df_num_long, aes(x = value)) + 
   geom_boxplot() +
@@ -85,9 +86,8 @@ plot2
 
 df_treino <- df_treino %>% filter(Appliances < 150)
 
-
-#Observando a correlação entre as variáveis numéricas
-#Obs: a correlação analisa apenas correlação entre variáveis numéricas
+#-----------------------------------------------------------------------------#
+#         Observando a correlação entre as variáveis numéricas
 
 cor_df <- cor(df_num)
 cor_df
@@ -163,9 +163,12 @@ df_teste_esc <- predict(pipeline, df_teste[,2:30])
 
 labels1 <- LabelEncoder.fit(df_treino$WeekStatus)
 df_treino_esc$WeekStatus <- transform(labels1, df_treino$WeekStatus)
+df_teste_esc$WeekStatus <- transform(labels1, df_teste$WeekStatus)
 
 labels2 <- LabelEncoder.fit(df_treino$Day_of_week)
 df_treino_esc$Day_of_week <- transform(labels2, df_treino$Day_of_week)
+df_teste_esc$Day_of_week <- transform(labels2, df_teste$Day_of_week)
+
 
 
 #unscaled <- scaled*sd + m
@@ -180,12 +183,16 @@ random_forest <- randomForest(Appliances ~ . ,data = df_treino_esc, ntree = 500,
 summary(random_forest)
 importance(random_forest)
 
+#As variáveis com maiores (>40) importâncias são: lights, NSM, RH_1, RH_2, RH_5,
+#T6,T7, T8, T9, T_out, Press_mm_hg, Visibility e Tdewpoint
+
 #------------------------------------------------------------------------------#
 
 
 saveRDS(random_forest, "random_forest_iot.rds")
 
 modelo_v1 <- readRDS("random_forest_iot.rds")
+importance(modelo_v1)
 
 #------------------------------------------------------------------------------#
 #                     PREPARANDO OS DADOS DE TESTE
@@ -199,21 +206,47 @@ df_teste_esc$Day_of_week <- transform(labels4, df_teste$Day_of_week)
 
 
 #------------------------------------------------------------------------------#
-#                   REALIZANDO PREVISÕES COM MODELO BASE
+#                          TREINANDO UM MODELO BASE
 
-previsoes <- predict(modelo_v1, df_teste_esc[-1])
+lin_reg_v1 <- lm(Appliances ~ lights + NSM + RH_1 + RH_2 + RH_5 + T6 + T7 + T8 
+                 + T9 + T_out + Press_mm_hg + Visibility + Tdewpoint,
+                 data = df_treino_esc)
 
-r_mse <- rmse(df_teste_esc[,1], previsoes)
-mean_squared_error <- mse(df_teste_esc[,1], previsoes)
+summary(lin_reg_v1)
+check_ <- check_model(lin_reg_v1)
 
-r_mse 
-mean_squared_error
+png(file="imagens/lin_reg_v1_metrics.png",width=1270, height=580)
+check_
+dev.off()
+
+#métricas de avaliação do modelo base
+rmse(lin_reg_v1)
+mse(lin_reg_v1)
+mae(lin_reg_v1)
+
+
 #------------------------------------------------------------------------------#
 #               TREINANDO UM MODELO DE GRADIENTE BOOSTING
 
 
-gradient_boosting <- h2o.gbm()
-check_model
+?h2o.gbm
+
+h2o.init()
+dependente <- "Appliances"
+
+independentes <- c("lights", "NSM", "RH_1", "RH_2", "RH_5", "T6", "T7", "T8", 
+                   "T9", "T_out", "Press_mm_hg", "Visibility", "Tdewpoint")
+
+df_h2o <- as.h2o(df_treino_esc)
+
+grad_bst <- h2o.gbm(y=dependente, x=independentes, 
+                    training_frame = df_h2o)
+
+#avaliação
+h2o.rmse(grad_bst)
+h2o.mse(grad_bst)
+h2o.mae(grad_bst)
+
 
 #parei aqui
 
