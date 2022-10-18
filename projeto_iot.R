@@ -1,11 +1,16 @@
-#PROJETO DE PREVISÃO DE USO ENERGÉTICO RESIDENCIAL (IoT)
+#------------------------------------------------------------------------------#
+#       PROJETO DE PREVISÃO DE USO ENERGÉTICO RESIDENCIAL (IoT)
+#------------------------------------------------------------------------------#
+
 
 #Projeto da Data Science Academy no qual há um feedback para avaliação de aprendizado
 
 
 #Setando o diretório do projeto
-setwd("Projeto 8/Modelagem_Preditiva_em_IoT/")
+setwd("machine_learning/Datasets e projetos/Projetos-7-8/
+      Projeto 8/Modelagem_Preditiva_em_IoT/")
 getwd()
+
 
 #---------------------------CARREGANDO OS PACOTES------------------------------#
 #carregando os pacotes a serem utilizados
@@ -14,16 +19,13 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(corrplot)
-library(lubridate)
 library(party)
-library(randomForest)
 library(Metrics)
 library(CatEncoders)
 library(caret)
-library(h2o)
 library(performance)
 
-
+#------------------------------------------------------------------------------#
 #---------------------------CARREGANDO OS DADOS--------------------------------#
 
 #Os dados fornecidos já estão divididos entre treino e teste:
@@ -45,7 +47,7 @@ summary(df_treino)
 #da mediana e valor máximo podendo indicar presença de valores outliers. 
 
 
-
+#------------------------------------------------------------------------------#
 #-----------------------ANÁLISE EXPLORATÓRIA DOS DADOS-------------------------#
 
 #dataset apresenta valores ausentes?
@@ -120,10 +122,9 @@ plot3 <- ggplot(consumo_por_dia, aes(x=Day_of_week, y=consumo)) +
 plot3
 
 
-#Observamos que os dias de sexta a segunda-feira temos um maior consumo 
-#de energia
-
 #Consumo baseado em horas
+library(lubridate)
+
 
 #Função para extrair informações de datas -> 
 #as.POSIXct(dates, format = "%m/%d/%Y %H:%M:%S")
@@ -131,6 +132,7 @@ plot3
 #ficam como string
 # df_treino$horario <- format(as.POSIXct(df_treino$date), format = "%H:%M")
 # df_treino$mes <- format(as.POSIXct(df_treino$date), format = "%m")
+
 
 df_treino$horario <- hour(df_treino$date)
 df_treino$mes <- month(df_treino$date)
@@ -140,42 +142,38 @@ plot4 <- ggplot(df_treino, aes(x=horario, y=mean(Appliances))) +
 
 plot4
 
+#------------------------------------------------------------------------------#
 #---------------------------ESCALONANDO VARIÁVEIS------------------------------#
 
 #                            VARIÁVEIS NUMÉRICAS
 
-#obs: Irei salvar a média e desvio padrão para retornar a variável ao valor normal
 
-media <- mean(df_treino[,2])
-desvio <- sd(df_treino[,2])
-
-df_treino_esc <- scale(df_treino[,2:30], center = TRUE, scale = TRUE)
-df_treino_esc <- as.data.frame(df_treino_esc)
-
-#usando CARET
 ?preProcess
-pipeline <- preProcess(df_treino[,2:30], method = c("center", "scale"))
-df_treino_esc<- predict(pipeline, df_treino[,2:30])
-df_teste_esc <- predict(pipeline, df_teste[,2:30])
+pipeline <- preProcess(df_treino[,3:34], method = c("center", "scale"))
+df_treino_esc<- predict(pipeline, df_treino[,2:34])
 
 
-#Variáveis categóricas
+#                           VARIÁVEIS CATEGÓRICAS
+
 
 labels1 <- LabelEncoder.fit(df_treino$WeekStatus)
 df_treino_esc$WeekStatus <- transform(labels1, df_treino$WeekStatus)
-df_teste_esc$WeekStatus <- transform(labels1, df_teste$WeekStatus)
 
 labels2 <- LabelEncoder.fit(df_treino$Day_of_week)
 df_treino_esc$Day_of_week <- transform(labels2, df_treino$Day_of_week)
-df_teste_esc$Day_of_week <- transform(labels2, df_teste$Day_of_week)
 
 
 
 #unscaled <- scaled*sd + m
 
 
-
+#------------------------------------------------------------------------------#
 #---------------------------ATRIBUTOS IMPORTANTES------------------------------#
+
+#Usaremos a biblioteca random forest para visualizar os atributos com maior
+#importância para a predição de valores de consumo
+
+library(randomForest)
 
 random_forest <- randomForest(Appliances ~ . ,data = df_treino_esc, ntree = 500,
                               importance= TRUE)
@@ -188,25 +186,31 @@ importance(random_forest)
 
 #------------------------------------------------------------------------------#
 
-
 saveRDS(random_forest, "random_forest_iot.rds")
-
-modelo_v1 <- readRDS("random_forest_iot.rds")
-importance(modelo_v1)
-
-#------------------------------------------------------------------------------#
-#                     PREPARANDO OS DADOS DE TESTE
-
-df_teste_esc <- scale(df_teste[,2:30], center = TRUE, scale = TRUE)
-df_teste_esc <- as.data.frame(df_teste_esc)
-labels3 <- LabelEncoder.fit(df_teste$WeekStatus)
-df_teste_esc$WeekStatus <- transform(labels3, df_teste$WeekStatus)
-labels4 <- LabelEncoder.fit(df_teste$Day_of_week)
-df_teste_esc$Day_of_week <- transform(labels4, df_teste$Day_of_week)
-
+modelo_var_imp <- readRDS("random_forest_iot.rds")
+importance(modelo_var_imp)
 
 #------------------------------------------------------------------------------#
-#                          TREINANDO UM MODELO BASE
+#-------------------------PREPARANDO OS DADOS DE TESTE-------------------------#
+
+df_teste <- df_teste %>% filter(Appliances < 150)
+df_teste$horario <- hour(df_teste$date)
+df_teste$mes <- month(df_teste$date)
+df_teste_esc <- predict(pipeline, df_teste[,2:34])
+
+df_teste$Day_of_week <- factor(df_teste$Day_of_week,levels = c(
+  'Sunday','Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
+))
+
+
+df_teste_esc$WeekStatus <- transform(labels1, df_teste$WeekStatus)
+df_teste_esc$Day_of_week <- transform(labels2, df_teste$Day_of_week)
+
+View(df_teste_esc)
+
+#------------------------------------------------------------------------------#
+#-------------------------TREINANDO UM MODELO BASE () -------------------------#
+
 
 lin_reg_v1 <- lm(Appliances ~ lights + NSM + RH_1 + RH_2 + RH_5 + T6 + T7 + T8 
                  + T9 + T_out + Press_mm_hg + Visibility + Tdewpoint,
@@ -215,21 +219,54 @@ lin_reg_v1 <- lm(Appliances ~ lights + NSM + RH_1 + RH_2 + RH_5 + T6 + T7 + T8
 summary(lin_reg_v1)
 check_ <- check_model(lin_reg_v1)
 
+
 png(file="imagens/lin_reg_v1_metrics.png",width=1270, height=580)
 check_
 dev.off()
 
-#métricas de avaliação do modelo base
-rmse(lin_reg_v1)
-mse(lin_reg_v1)
-mae(lin_reg_v1)
+#as variáveis T6, T6, T9 e T_out apresentam alta probabilidade de colinearidade
+#iremos removelas e ver o comportamento do modelo
+
+lin_reg_v2 <- lm(Appliances ~ lights + NSM +
+                   Press_mm_hg,
+                 data = df_treino_esc)
+
+#métricas de avaliação do modelo base nos dados de teste
+
+previsões_lg <- predict(lin_reg_v1, df_teste_esc[,2:33])
+
+rmse <- RMSE(previsões, df_teste_esc[,1]) #21.50
+mse <- (RMSE(previsões, df_teste_esc[,1]))^2 #462.34
+mae <- MAE(previsões, df_teste_esc[,1]) #16.28
+
 
 
 #------------------------------------------------------------------------------#
-#               TREINANDO UM MODELO DE GRADIENTE BOOSTING
 
 
-?h2o.gbm
+
+#------------------------------------------------------------------------------#
+#-------------------TREINANDO UM MODELO DE GRADIENTE BOOSTING------------------#
+
+install.packages("gbm")
+library("gbm")
+
+?gbm
+gb <- gbm(Appliances ~ lights + NSM + RH_1 + RH_2 + RH_5 + T6 + T7 + T8 
+          + T9 + T_out + Press_mm_hg + Visibility + Tdewpoint,
+          data = df_treino_esc, distribution = 'gaussian', n.trees = 1000)
+
+previsões_gb <- predict(gb, df_teste_esc[,2:33])
+
+rmse_gb <- RMSE(previsões_gb, df_teste_esc[,1]) #18.16
+mse_gb <- (RMSE(previsões_gb, df_teste_esc[,1]))^2 #329.95
+mae_gb <- MAE(previsões_gb, df_teste_esc[,1]) #13.54
+
+
+
+#------------------------------------------------------------------------------#
+library("h2o")
+
 
 h2o.init()
 dependente <- "Appliances"
@@ -238,17 +275,31 @@ independentes <- c("lights", "NSM", "RH_1", "RH_2", "RH_5", "T6", "T7", "T8",
                    "T9", "T_out", "Press_mm_hg", "Visibility", "Tdewpoint")
 
 df_h2o <- as.h2o(df_treino_esc)
+df_h2o_teste <- as.h2o(df_teste_esc)
 
+
+?h2o.gbm
 grad_bst <- h2o.gbm(y=dependente, x=independentes, 
                     training_frame = df_h2o)
 
+
+
 #avaliação
-h2o.rmse(grad_bst)
-h2o.mse(grad_bst)
-h2o.mae(grad_bst)
+h2o.rmse(grad_bst) #15.81
+h2o.mse(grad_bst) #250.15
+h2o.mae(grad_bst) #11.75
+
+performance_gbm <- h2o.performance(grad_bst, newdata = df_h2o_teste)
+performance_gbm
+
+#------------------------------------------------------------------------------#
+#--------------------------TREINANDO UM MODELO DE XGboost----------------------#
+
+library("xgboost")
+
+?xgboost
 
 
 #parei aqui
-
 
            
