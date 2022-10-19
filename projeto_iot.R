@@ -7,8 +7,8 @@
 
 
 #Setando o diretório do projeto
-setwd("machine_learning/Datasets e projetos/Projetos-7-8/
-      Projeto 8/Modelagem_Preditiva_em_IoT/")
+setwd("~/machine_learning/Datasets e projetos/Projetos-7-8/Projeto 8/Modelagem_Preditiva_em_IoT/")
+
 getwd()
 
 
@@ -40,6 +40,13 @@ View(df_treino)
 
 #Observa se que o dataset é composto majoritariamente por variáveis numéricas,
 #somente duas variáveis são caracteres: Day_of_week e WeekStatus
+
+#A variável Appliances apresenta o consumo dos eletrodoméstricos em Wh
+#As variáveis iniciadas em T, são os sensores de temperatura nos cômodos
+#As variáveis iniciadas em RH, são os sensores de umidade nos cômodos
+#As variáveis Tdewpoint, Press_mm_hg, Windspeed e Visibility, T_out e RH_out
+#correspondem a dados climáticos na região
+
 
 summary(df_treino)
 
@@ -120,6 +127,7 @@ plot3 <- ggplot(consumo_por_dia, aes(x=Day_of_week, y=consumo)) +
   geom_bar(stat = "identity")
 
 plot3
+
 
 
 #Consumo baseado em horas
@@ -248,20 +256,28 @@ mae <- MAE(previsões, df_teste_esc[,1]) #16.28
 #------------------------------------------------------------------------------#
 #-------------------TREINANDO UM MODELO DE GRADIENTE BOOSTING------------------#
 
-install.packages("gbm")
+
 library("gbm")
 
 ?gbm
-gb <- gbm(Appliances ~ lights + NSM + RH_1 + RH_2 + RH_5 + T6 + T7 + T8 
+grad_bst <- gbm(Appliances ~ lights + NSM + RH_1 + RH_2 + RH_5 + T6 + T7 + T8 
           + T9 + T_out + Press_mm_hg + Visibility + Tdewpoint,
-          data = df_treino_esc, distribution = 'gaussian', n.trees = 1000)
+          data = df_treino_esc, distribution = 'gaussian', n.trees = 1000,
+          interaction.depth = 5)
 
-previsões_gb <- predict(gb, df_teste_esc[,2:33])
+#interation depth = 5 apresenta resultados bem melhores que o default = 1
+
+rmse(grad_bst) #12.45
+mse(grad_bst) #155.01
+mae(grad_bst) #9.32
+
+previsões_gb <- predict(grad_bst, df_teste_esc[,2:33])
 
 rmse_gb <- RMSE(previsões_gb, df_teste_esc[,1]) #18.16
 mse_gb <- (RMSE(previsões_gb, df_teste_esc[,1]))^2 #329.95
 mae_gb <- MAE(previsões_gb, df_teste_esc[,1]) #13.54
 
+saveRDS(grad_bst, "grad_bst_v1.rds")
 
 
 #------------------------------------------------------------------------------#
@@ -292,6 +308,9 @@ h2o.mae(grad_bst) #11.75
 performance_gbm <- h2o.performance(grad_bst, newdata = df_h2o_teste)
 performance_gbm
 
+#detach(package="h2o", unload = T)
+
+
 #------------------------------------------------------------------------------#
 #--------------------------TREINANDO UM MODELO DE XGboost----------------------#
 
@@ -299,7 +318,47 @@ library("xgboost")
 
 ?xgboost
 
+parametros <- list(eta = 0.3) #default
+
+X <- as.matrix(df_treino_esc[,2:33])
+y <- as.matrix(df_treino_esc[,1])
+
+xtreme_bst_v1 <- xgboost(data = X, label = y,
+                         nrounds = 1000, early_stopping_rounds = 3, 
+                         params = parametros, verbose = 0)
+
+
+
+plot(xtreme_bst_v1$evaluation_log, type='l', col='blue')
+
+X_teste <- as.matrix(df_teste_esc[,2:33])
+y_teste <- as.matrix(df_treino_esc[,1])
+
+previsões_gb <- predict(xtreme_bst_v1, X_teste)
+rmse_xgb <- RMSE(previsões_gb, df_teste_esc[,1])
+
+
+saveRDS(xtreme_bst_v1, "xtreme_bst_v1.rds")
 
 #parei aqui
 
-           
+
+
+
+#------------------------------------------------------------------------------#
+#                                IDEIAS
+
+df_treino2 <- df_treino %>%
+  mutate("T_media" = rowMeans(select(df_treino,c(T1,T2,T3,T4,T5
+                                                 ,T6,T7,T8,T9)))) %>%
+  mutate("RH_media" = rowMeans(select(df_treino,c(RH_1,RH_2,RH_3,RH_4,RH_5
+                                                 ,RH_6,RH_7,RH_8,RH_9)))) %>%
+  select(-c(date, T1:RH_9))
+
+
+#para limpar os outliers de maneira mais efetiva!
+
+data_clean <- data_scale %>% 
+  mutate( zscore = (Appliances - mean(Appliances)) / sd(Appliances)) %>%
+  filter(zscore <=3) %>%
+  select(-zscore)
