@@ -24,6 +24,7 @@ library(Metrics)
 library(CatEncoders)
 library(caret)
 library(performance)
+library(psych)
 
 #------------------------------------------------------------------------------#
 #---------------------------CARREGANDO OS DADOS--------------------------------#
@@ -46,6 +47,7 @@ View(df_treino)
 #As variáveis iniciadas em RH, são os sensores de umidade nos cômodos
 #As variáveis Tdewpoint, Press_mm_hg, Windspeed e Visibility, T_out e RH_out
 #correspondem a dados climáticos na região
+#A variável NSM representam o número de segundos após meia noite
 
 
 summary(df_treino)
@@ -59,12 +61,12 @@ summary(df_treino)
 
 #dataset apresenta valores ausentes?
 
-sum(is.na(df_treino)) #Não!
+colSums(is.na(df_treino)) #Não!
+
 
 #Vamos observar a distribuição gráficas dos atributos numéricos do dataset
 
 df_num <- df_treino[,2:30]
-
 
 df_num_long <- df_num %>%
   pivot_longer(cols = colnames(df_num))
@@ -91,15 +93,23 @@ plot2 <- ggplot(df_num_long, aes(x = value)) +
 plot2
 
 #Em vista que a variável preditora apresenta muitos valores outliers, iremos
-#filtrar o consumo para < 150 KW
+#filtrar o consumo para < 150 KW / através do Z score
 
-df_treino <- df_treino %>% filter(Appliances < 150)
+
+df_treino <- df_treino %>% filter(Appliances < 200)
+
+#df_treino <- df_treino %>% 
+  #mutate( zscore = (Appliances - mean(Appliances)) / sd(Appliances)) %>%
+  #filter(zscore <=3 & zscore >= -3) %>%
+  #select(-zscore)
 
 #-----------------------------------------------------------------------------#
 #         Observando a correlação entre as variáveis numéricas
 
 cor_df <- cor(df_num)
 cor_df
+
+
 
 #Podemos perceber que o consumo (variável Appliances) apresenta baixos 
 #níveis de correlação com as variáveis light, T2, T6, T_out, RH_out e NSM.
@@ -109,6 +119,9 @@ cor_df
 
 corrplot(cor_df, method = 'color')
 
+
+#-----------------------------------------------------------------------------#
+#                         Gerando novas variáveis
 
 
 #Primeiro vamos analisar o consumo baseado nos dias da semana
@@ -168,7 +181,7 @@ labels1 <- LabelEncoder.fit(df_treino$WeekStatus)
 df_treino_esc$WeekStatus <- transform(labels1, df_treino$WeekStatus)
 
 labels2 <- LabelEncoder.fit(df_treino$Day_of_week)
-df_treino_esc$Day_of_week <- transform(labels2, df_treino$Day_of_week)
+df_treino_esc$Day_of_week <- transform(labels2, as.character(df_treino$Day_of_week))
 
 
 
@@ -182,12 +195,18 @@ df_treino_esc$Day_of_week <- transform(labels2, df_treino$Day_of_week)
 #importância para a predição de valores de consumo
 
 library(randomForest)
-
+?randomForest
 random_forest <- randomForest(Appliances ~ . ,data = df_treino_esc, ntree = 500,
                               importance= TRUE)
 
+
 summary(random_forest)
 importance(random_forest)
+
+rmse(random_forest) #17.61
+mse(random_forest) # 310.29
+mean(random_forest$rsq) #0.65
+
 
 #As variáveis com maiores (>40) importâncias são: lights, NSM, RH_1, RH_2, RH_5,
 #T6,T7, T8, T9, T_out, Press_mm_hg, Visibility e Tdewpoint
@@ -201,55 +220,59 @@ importance(modelo_var_imp)
 #------------------------------------------------------------------------------#
 #-------------------------PREPARANDO OS DADOS DE TESTE-------------------------#
 
-df_teste <- df_teste %>% filter(Appliances < 150)
-df_teste$horario <- hour(df_teste$date)
-df_teste$mes <- month(df_teste$date)
-df_teste_esc <- predict(pipeline, df_teste[,2:34])
+df_teste <- df_teste %>% filter(Appliances < 200)
+
+
+#df_teste <- df_teste %>% 
+  #mutate( zscore = (Appliances - mean(Appliances)) / sd(Appliances)) %>%
+  #filter(zscore <=3 & zscore >= -3) %>%
+  #select(-zscore)
+
 
 df_teste$Day_of_week <- factor(df_teste$Day_of_week,levels = c(
   'Sunday','Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 ))
 
 
+df_teste$horario <- hour(df_teste$date)
+df_teste$mes <- month(df_teste$date)
+df_teste_esc <- predict(pipeline, df_teste[,2:34])
+
 df_teste_esc$WeekStatus <- transform(labels1, df_teste$WeekStatus)
-df_teste_esc$Day_of_week <- transform(labels2, df_teste$Day_of_week)
+df_teste_esc$Day_of_week <- transform(labels2, as.character(df_teste$Day_of_week))
 
 View(df_teste_esc)
 
 #------------------------------------------------------------------------------#
-#-------------------------TREINANDO UM MODELO BASE () -------------------------#
+#--------------- --TREINANDO UM MODELO REGRESSÃO LINEAR -----------------------#
 
 
-lin_reg_v1 <- lm(Appliances ~ lights + NSM + RH_1 + RH_2 + RH_5 + T6 + T7 + T8 
-                 + T9 + T_out + Press_mm_hg + Visibility + Tdewpoint,
+lin_reg_v1 <- lm(Appliances ~ lights + T3 + T6 + T7 + T8 + T9 + T_out +
+                   RH_1 + RH_2 + RH_3 +RH_5 + Press_mm_hg + NSM,
                  data = df_treino_esc)
 
-summary(lin_reg_v1)
-check_ <- check_model(lin_reg_v1)
-
-
-png(file="imagens/lin_reg_v1_metrics.png",width=1270, height=580)
-check_
-dev.off()
-
-#as variáveis T6, T6, T9 e T_out apresentam alta probabilidade de colinearidade
-#iremos removelas e ver o comportamento do modelo
-
-lin_reg_v2 <- lm(Appliances ~ lights + NSM +
-                   Press_mm_hg,
-                 data = df_treino_esc)
 
 #métricas de avaliação do modelo base nos dados de teste
 
-previsões_lg <- predict(lin_reg_v1, df_teste_esc[,2:33])
+previsões_rin_reg <- predict(lin_reg_v1, df_teste_esc[,2:33])
+summary(lin_reg_v1)
 
-rmse <- RMSE(previsões, df_teste_esc[,1]) #21.50
-mse <- (RMSE(previsões, df_teste_esc[,1]))^2 #462.34
-mae <- MAE(previsões, df_teste_esc[,1]) #16.28
+avaliacao_modelo <- function(nome_do_modelo, observado, predito){
+  
+  
+  data.frame(Modelo = as.character(nome_do_modelo),
+             RMSE = RMSE(predito, observado),
+             MAE = MAE(predito, observado),
+             R_Square = R2(predito, observado),
+             check.names = F
+  ) %>% 
+    mutate(MSE = sqrt(RMSE))
+}
 
+avaliacao_rl <- avaliacao_modelo("regressão linear", df_teste_esc$Appliances,
+                                 previsões_rin_reg)
 
-
-#------------------------------------------------------------------------------#
+avaliacao_rl
 
 
 
@@ -257,28 +280,29 @@ mae <- MAE(previsões, df_teste_esc[,1]) #16.28
 #-------------------TREINANDO UM MODELO DE GRADIENTE BOOSTING------------------#
 
 
+
 library("gbm")
 
 ?gbm
-grad_bst <- gbm(Appliances ~ lights + NSM + RH_1 + RH_2 + RH_5 + T6 + T7 + T8 
-          + T9 + T_out + Press_mm_hg + Visibility + Tdewpoint,
-          data = df_treino_esc, distribution = 'gaussian', n.trees = 1000,
-          interaction.depth = 5)
+grad_bst <- gbm(Appliances ~ lights + NSM + RH_1 + RH_2 + RH_3 + RH_5 + T6 + T7 + T8 
+          + T9 + T_out + Press_mm_hg,
+          data = df_treino_esc, distribution = 'gaussian', n.trees = 500,
+          interaction.depth = 10, cv.folds=5)
 
 #interation depth = 5 apresenta resultados bem melhores que o default = 1
 
-rmse(grad_bst) #12.45
-mse(grad_bst) #155.01
-mae(grad_bst) #9.32
 
 previsões_gb <- predict(grad_bst, df_teste_esc[,2:33])
 
-rmse_gb <- RMSE(previsões_gb, df_teste_esc[,1]) #18.16
-mse_gb <- (RMSE(previsões_gb, df_teste_esc[,1]))^2 #329.95
-mae_gb <- MAE(previsões_gb, df_teste_esc[,1]) #13.54
+avaliacao_gbm <- avaliacao_modelo('gradient boosting', df_teste_esc$Appliances, previsões_gb)
+
+RMSE(previsões_gb, df_teste_esc[,1]) #18.72
+sqrt(RMSE(previsões_gb, df_teste_esc[,1])) #4.32
+MAE(previsões_gb, df_teste_esc[,1]) #12.63
 
 saveRDS(grad_bst, "grad_bst_v1.rds")
 
+?R2
 
 #------------------------------------------------------------------------------#
 library("h2o")
@@ -318,35 +342,46 @@ library("xgboost")
 
 ?xgboost
 
-parametros <- list(eta = 0.3) #default
+parametros <- list(eta = 0.1, subsample = 0.5, max_depth=6) #default
 
-X <- as.matrix(df_treino_esc[,2:33])
+X <- as.matrix(df_treino_esc[c("lights", "NSM", "RH_1", "RH_2", "RH_3", "RH_5", "T6", "T7", "T8", 
+                               "T9", "T_out", "Press_mm_hg", "Visibility", "Tdewpoint")])
 y <- as.matrix(df_treino_esc[,1])
 
+#modelo com todos as variáveis
 xtreme_bst_v1 <- xgboost(data = X, label = y,
-                         nrounds = 1000, early_stopping_rounds = 3, 
-                         params = parametros, verbose = 0)
+                         nrounds = 500, early_stopping_rounds = 3, 
+                         params = parametros, verbose = 1)
 
 
 
 plot(xtreme_bst_v1$evaluation_log, type='l', col='blue')
 
-X_teste <- as.matrix(df_teste_esc[,2:33])
-y_teste <- as.matrix(df_treino_esc[,1])
+X_teste <- as.matrix(df_teste_esc[c("lights", "NSM", "RH_1", "RH_2", "RH_3", "RH_5", "T6", "T7", "T8", 
+                                    "T9", "T_out", "Press_mm_hg", "Visibility", "Tdewpoint")])
+y_teste <- as.matrix(df_teste_esc[,1])
 
-previsões_gb <- predict(xtreme_bst_v1, X_teste)
-rmse_xgb <- RMSE(previsões_gb, df_teste_esc[,1])
+previsoes_xgb <- predict(xtreme_bst_v1, X_teste)
+
+avaliacao_xgb <- avaliacao_modelo('XGBoost',as.numeric(df_teste_esc$Appliances), 
+                                  as.numeric(previsoes_xgb))
 
 
 saveRDS(xtreme_bst_v1, "xtreme_bst_v1.rds")
 
 #parei aqui
 
+?cbind
+resultados_metricas <- rbind(avaliacao_rl, avaliacao_gbm, avaliacao_xgb)
+View(resultados_metricas)
 
+write.csv(resultados_metricas, file="resultados_modelos.csv")
+results <- read.csv(file="resultados_modelos.csv", row.names = 1)
 
-
+View(resultss)
 #------------------------------------------------------------------------------#
 #                                IDEIAS
+
 
 df_treino2 <- df_treino %>%
   mutate("T_media" = rowMeans(select(df_treino,c(T1,T2,T3,T4,T5
@@ -358,7 +393,24 @@ df_treino2 <- df_treino %>%
 
 #para limpar os outliers de maneira mais efetiva!
 
+#esse método é melhor (critério interquartil)
+boxplot(df_treino$Appliances, col='blue')
+min(boxplot.stats(df_treino$Appliances)$out)
+
+#esse método leva a modelos mais fracos
 data_clean <- data_scale %>% 
   mutate( zscore = (Appliances - mean(Appliances)) / sd(Appliances)) %>%
   filter(zscore <=3) %>%
   select(-zscore)
+
+
+
+
+
+
+
+
+
+
+
+
