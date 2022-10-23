@@ -16,6 +16,7 @@ getwd()
 #carregando os pacotes a serem utilizados
 
 library(dplyr)
+library(tidyr)
 library(ggplot2)
 library(corrplot)
 library(party)
@@ -82,15 +83,15 @@ pipelineProcessamento <- function(dataframe_iot) {
   
   
     #escalonando as variáveis numéricas
-    preProcessamento <- preProcess(dataframe_iot[,3:32], method = c("center", "scale"))
-    dataframe_iot <- predict(preProcessamento, dataframe_iot[,2:32])
+    preProcessamento <- preProcess(dataframe_iot[,3:34], method = c("center", "scale"))
+    dataframe_iot <- predict(preProcessamento, dataframe_iot[,2:34])
     
     labels_Weekstatus <- LabelEncoder.fit(dataframe_iot$WeekStatus)
-    dataframe_iot$WeekStatus <- transform(labels_Weekstatus, as.character(
+    dataframe_iot$WeekStatus <- transform(labels_Weekstatus, (
       dataframe_iot$WeekStatus))
     
     labels_DayofWeek <- LabelEncoder.fit(dataframe_iot$Day_of_week)
-    dataframe_iot$Day_of_week <- transform(labels_DayofWeek, as.character(
+    dataframe_iot$Day_of_week <- transform(labels_DayofWeek, (
       dataframe_iot$Day_of_week))
   
     return(dataframe_iot)
@@ -112,7 +113,7 @@ df_completo <- rbind(df_treino, df_teste)
 
 #Verificando o dataset e os tipos de dados apresentados pelo dataset
 
-View(df_treino)
+View(df_completo)
 
 #Observa se que o dataset é composto majoritariamente por variáveis numéricas,
 #somente duas variáveis são caracteres: Day_of_week e WeekStatus
@@ -125,7 +126,7 @@ View(df_treino)
 #A variável NSM representam o número de segundos após meia noite
 
 
-summary(df_treino)
+summary(df_completo)
 
 #É possível observar que a variável Appliances apresenta média bastante diferente
 #da mediana e valor máximo podendo indicar presença de valores outliers. 
@@ -136,17 +137,15 @@ summary(df_treino)
 
 #dataset apresenta valores ausentes?
 
-colSums(is.na(df_treino)) #Não!
+colSums(is.na(df_completo)) #Não!
 
 
 #Vamos observar a distribuição gráficas dos atributos numéricos do dataset
 
-df_num <- df_treino[,2:30]
+df_num <- df_completo[,2:30]
 
-df_num_long <- df_num %>%
+df_num_long <- df_num %>% 
   pivot_longer(cols = colnames(df_num))
-
-View(df_num_long)
 
 plot1 <- ggplot(df_num_long, aes(x = value)) + #Plota histogramas individuais
   geom_histogram() +
@@ -170,13 +169,13 @@ plot2
 
 
 #-----------------------------------------------------------------------------#
-boxplot(df_treino$Appliances, col='blue')
-min(boxplot.stats(df_treino$Appliances)$out)
+boxplot(df_completo$Appliances, col='blue')
+min(boxplot.stats(df_completo$Appliances)$out)
 
 #Em vista que a variável preditora apresenta muitos valores outliers, iremos
 #filtrar o consumo para < 200 KW 
 
-df_treino <- df_treino %>% filter(Appliances < 200)
+df_completo <- df_completo %>% filter(Appliances < 200)
 
 #df_treino <- df_treino %>% 
   #mutate( zscore = (Appliances - mean(Appliances)) / sd(Appliances)) %>%
@@ -205,12 +204,11 @@ corrplot(cor_df, method = 'color')
 
 
 #Primeiro vamos analisar o consumo baseado nos dias da semana
-
-df_treino$Day_of_week <- factor(df_treino$Day_of_week,levels = c(
+df_completo$Day_of_week <- factor(df_completo$Day_of_week,levels = c(
   'Sunday','Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 ))
 
-consumo_por_dia <- df_treino %>% 
+consumo_por_dia <- df_completo %>% 
   group_by(Day_of_week) %>% 
   summarise(consumo = mean(Appliances))
 
@@ -221,49 +219,48 @@ plot3 <- ggplot(consumo_por_dia, aes(x=Day_of_week, y=consumo)) +
 
 plot3
 
+#Primeiro vamos analisar o consumo baseado entre dia útil e fins de semana
 
+df_completo$WeekStatus <- as.factor(df_completo$WeekStatus)
 
-#Consumo baseado em horas
-#Função para extrair informações de datas -> 
-#as.POSIXct(dates, format = "%m/%d/%Y %H:%M:%S")
+consumo_por_dia_util <- df_completo %>% 
+  group_by(WeekStatus) %>% 
+  summarise(consumo = mean(Appliances))
 
-#ficam como string
-# df_treino$horario <- format(as.POSIXct(df_treino$date), format = "%H:%M")
-# df_treino$mes <- format(as.POSIXct(df_treino$date), format = "%m")
-
-
-df_treino$horario <- hour(df_treino$date)
-df_treino$mes <- month(df_treino$date)
-
-plot4 <- ggplot(df_treino, aes(x=horario, y=mean(Appliances))) + 
+plot4 <- ggplot(consumo_por_dia_util, aes(x=WeekStatus, y=consumo)) + 
   geom_bar(stat = "identity")
 
 plot4
 
+#a diferença de consumo entre dias da semana e fins de semana não aparenta ser
+#considerável, são valores bem próximos
+
+
+df_completo$horario <- hour(df_completo$date)
+df_completo$mes <- month(df_completo$date)
+
+plot5 <- ggplot(df_completo, aes(x=horario, y=mean(Appliances))) + 
+  geom_bar(stat = "identity")
+
+plot5
+#a média de consumo é mais elevada durante as primeiras horas do dia, entre 00
+#e 05 horas
+
+
 #------------------------------------------------------------------------------#
-#---------------------------ESCALONANDO VARIÁVEIS------------------------------#
+#---------------------------PRÉ PROCESSANDO OS DADOS---------------------------#
 
-#                            VARIÁVEIS NUMÉRICAS
+#                TRATANDO VARIÁVEIS NUMÉRICAS e CATEGÓRICAS
 
+#automatizamos o processamento através da função pipelineProcessamento
+df_completo_esc <- pipelineProcessamento(df_completo)
 
-?preProcess
-preProcessamento <- preProcess(df_treino[,3:34], method = c("center", "scale"))
-df_treino_esc<- predict(preProcessamento, df_treino[,2:34])
+?createDataPartition
 
+particao <- createDataPartition(y=df_completo_esc$Appliances, p = 0.75, list=F)
 
-#                           VARIÁVEIS CATEGÓRICAS
-
-
-labels1 <- LabelEncoder.fit(df_treino$WeekStatus)
-df_treino_esc$WeekStatus <- transform(labels1, df_treino$WeekStatus)
-
-labels2 <- LabelEncoder.fit(df_treino$Day_of_week)
-df_treino_esc$Day_of_week <- transform(labels2, as.character(df_treino$Day_of_week))
-
-
-
-#unscaled <- scaled*sd + m
-
+treino <- df_completo_esc[particao,]
+teste <- df_completo_esc[-particao,]
 
 #------------------------------------------------------------------------------#
 #---------------------------ATRIBUTOS IMPORTANTES------------------------------#
@@ -273,7 +270,7 @@ df_treino_esc$Day_of_week <- transform(labels2, as.character(df_treino$Day_of_we
 
 
 ?randomForest
-random_forest <- randomForest(Appliances ~ . ,data = df_treino_esc, ntree = 500,
+random_forest <- randomForest(Appliances ~ . ,data = treino, ntree = 500,
                               importance= TRUE)
 
 
@@ -294,31 +291,6 @@ saveRDS(random_forest, "random_forest_iot.rds")
 modelo_var_imp <- readRDS("random_forest_iot.rds")
 importance(modelo_var_imp)
 
-#------------------------------------------------------------------------------#
-#-------------------------PREPARANDO OS DADOS DE TESTE-------------------------#
-
-df_teste <- df_teste %>% filter(Appliances < 200)
-
-
-#df_teste <- df_teste %>% 
-  #mutate( zscore = (Appliances - mean(Appliances)) / sd(Appliances)) %>%
-  #filter(zscore <=3 & zscore >= -3) %>%
-  #select(-zscore)
-
-
-df_teste$Day_of_week <- factor(df_teste$Day_of_week,levels = c(
-  'Sunday','Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
-))
-
-
-df_teste$horario <- hour(df_teste$date)
-df_teste$mes <- month(df_teste$date)
-df_teste_esc <- predict(pipeline, df_teste[,2:34])
-
-df_teste_esc$WeekStatus <- transform(labels1, df_teste$WeekStatus)
-df_teste_esc$Day_of_week <- transform(labels2, as.character(df_teste$Day_of_week))
-
-View(df_teste_esc)
 
 #------------------------------------------------------------------------------#
 #------------------TREINANDO UM MODELO REGRESSÃO LINEAR -----------------------#
@@ -326,15 +298,15 @@ View(df_teste_esc)
 
 lin_reg_v1 <- lm(Appliances ~ lights + T3 + T6 + T7 + T8 + T9 + T_out +
                    RH_1 + RH_2 + RH_3 +RH_5 + Press_mm_hg + NSM,
-                 data = df_treino_esc)
+                 data = treino)
 
 
 #métricas de avaliação do modelo base nos dados de teste
 
-previsões_rin_reg <- predict(lin_reg_v1, df_teste_esc[,2:33])
+previsões_rin_reg <- predict(lin_reg_v1, teste[,2:33])
 summary(lin_reg_v1)
 
-avaliacao_rl <- avaliacao_modelo("regressão linear", df_teste_esc$Appliances,
+avaliacao_rl <- avaliacaoModelo("regressão linear", teste$Appliances,
                                  previsões_rin_reg)
 
 avaliacao_rl
@@ -344,19 +316,18 @@ saveRDS(lin_reg_v1, "lin_reg_V1.rds")
 #------------------------------------------------------------------------------#
 #-------------------TREINANDO UM MODELO DE GRADIENTE BOOSTING------------------#
 
-
-?gbm
 grad_bst <- gbm(Appliances ~ lights + NSM + RH_1 + RH_2 + RH_3 + RH_5 + T6 + T7 + T8 
           + T9 + T_out + Press_mm_hg,
-          data = df_treino_esc, distribution = 'gaussian', n.trees = 500,
+          data = treino, distribution = 'gaussian', n.trees = 500,
           interaction.depth = 10, cv.folds=5)
 
 #interation depth = 5 apresenta resultados bem melhores que o default = 1
 
 
-previsões_gb <- predict(grad_bst, df_teste_esc[,2:33])
+previsões_gb <- predict(grad_bst, teste[,2:33])
 
-avaliacao_gbm <- avaliacao_modelo('gradient boosting', df_teste_esc$Appliances, previsões_gb)
+avaliacao_gbm <- avaliacaoModelo('gradient boosting', teste$Appliances, previsões_gb)
+avaliacao_gbm
 
 RMSE(previsões_gb, df_teste_esc[,1]) #18.72
 sqrt(RMSE(previsões_gb, df_teste_esc[,1])) #4.32
@@ -369,43 +340,42 @@ saveRDS(grad_bst, "grad_bst_v1.rds")
 #--------------------------TREINANDO UM MODELO DE XGboost----------------------#
 
 
-?xgboost
-
 parametros <- list(eta = 0.1, subsample = 0.5, max_depth=6) #default
 
-X <- as.matrix(df_treino_esc[c("lights", "NSM", "RH_1", "RH_2", "RH_3",
+X <- as.matrix(treino[c("lights", "NSM", "RH_1", "RH_2", "RH_3",
                                "RH_5", "T6", "T7", "T8", "T9", "T_out", 
                                "Press_mm_hg", "Visibility", "Tdewpoint")])
 
-y <- as.matrix(df_treino_esc[,1])
+y <- as.matrix(treino[,1])
 
 #modelo com todos as variáveis
 xtreme_bst_v1 <- xgboost(data = X, label = y,
                          nrounds = 500, early_stopping_rounds = 3, 
                          params = parametros, verbose = 1)
 
-
+xtreme_bst_v1$params$validate_parameters
 
 plot(xtreme_bst_v1$evaluation_log, type='l', col='blue')
 
-X_teste <- as.matrix(df_teste_esc[c("lights", "NSM", "RH_1", "RH_2", "RH_3", 
+X_teste <- as.matrix(teste[c("lights", "NSM", "RH_1", "RH_2", "RH_3", 
                                     "RH_5", "T6", "T7", "T8","T9", "T_out",
                                     "Press_mm_hg", "Visibility", "Tdewpoint")])
 
-y_teste <- as.matrix(df_teste_esc[,1])
+y_teste <- as.matrix(teste[,1])
 
 previsoes_xgb <- predict(xtreme_bst_v1, X_teste)
 
-avaliacao_xgb <- avaliacao_modelo('XGBoost',as.numeric(df_teste_esc$Appliances), 
+avaliacao_xgb <- avaliacaoModelo('XGBoost',as.numeric(teste$Appliances), 
                                   as.numeric(previsoes_xgb))
-
+avaliacao_xgb
 
 saveRDS(xtreme_bst_v1, "xtreme_bst_v1.rds")
+
 
 #------------------------------------------------------------------------------#
 #--------------------------SALVANDO RESULTADOS---------------------------------#
 
-?cbind
+
 resultados_metricas <- rbind(avaliacao_rl, avaliacao_gbm, avaliacao_xgb)
 View(resultados_metricas)
 
@@ -413,7 +383,7 @@ write.csv(resultados_metricas, file="resultados_modelos.csv")
 
 results <- read.csv(file="resultados_modelos.csv", row.names = 1)
 
-View(resultss)
+View(results)
 #------------------------------------------------------------------------------#
 #                                IDEIAS
 
