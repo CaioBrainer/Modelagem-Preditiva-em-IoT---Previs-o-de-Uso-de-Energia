@@ -59,8 +59,8 @@ modificaColunas <- function(dataframe_iot) {
     select(-c(date,rv1,rv2, T1:RH_9))
   
   #escalonando as variáveis numéricas
-  pipeline_mod = preProcess(df_modificado[,2:11], method = c("center", "scale"))
-  df_modificado = predict(pipeline_mod, df_modificado[,1:11])
+  pipeline_mod = preProcess(df_modificado[,2:13], method = c("center", "scale"))
+  df_modificado = predict(pipeline_mod, df_modificado[,1:13])
   
   #tratando variáveis categóricas
   labels_Weekstatus <- LabelEncoder.fit(df_modificado$WeekStatus)
@@ -273,14 +273,16 @@ teste <- df_completo_esc[-particao,]
 random_forest <- randomForest(Appliances ~ . ,data = treino, ntree = 500,
                               importance= TRUE)
 
-
-summary(random_forest)
 importance(random_forest)
 
-rmse(random_forest) #17.61
-mse(random_forest) # 310.29
-mean(random_forest$rsq) #0.65
+random_forest <- randomForest(Appliances ~ lights + T3 + T6 + T7 + T8 + T9 + T_out +
+                                RH_1 + RH_2 + RH_3 +RH_5 + Press_mm_hg + NSM, 
+                              data = treino, ntree = 500,
+                              importance= TRUE)
 
+previsoes_rf <- predict(random_forest, teste[,2:33])
+
+avaliacao_rf <- avaliacaoModelo('random forest', teste$Appliances, previsoes_rf)
 
 #As variáveis com maiores (>40) importâncias são: lights, NSM, RH_1, RH_2, RH_5,
 #T6,T7, T8, T9, T_out, Press_mm_hg, Visibility e Tdewpoint
@@ -316,7 +318,7 @@ saveRDS(lin_reg_v1, "lin_reg_V1.rds")
 #------------------------------------------------------------------------------#
 #-------------------TREINANDO UM MODELO DE GRADIENTE BOOSTING------------------#
 
-grad_bst <- gbm(Appliances ~ lights + NSM + RH_1 + RH_2 + RH_3 + RH_5 + T6 + T7 + T8 
+grad_bst <- gbm(Appliances ~ lights + NSM + RH_1 + RH_2 + RH_3 + RH_5 + T3 + T6 + T7 + T8 
           + T9 + T_out + Press_mm_hg,
           data = treino, distribution = 'gaussian', n.trees = 500,
           interaction.depth = 10, cv.folds=5)
@@ -329,10 +331,6 @@ previsões_gb <- predict(grad_bst, teste[,2:33])
 avaliacao_gbm <- avaliacaoModelo('gradient boosting', teste$Appliances, previsões_gb)
 avaliacao_gbm
 
-RMSE(previsões_gb, df_teste_esc[,1]) #18.72
-sqrt(RMSE(previsões_gb, df_teste_esc[,1])) #4.32
-MAE(previsões_gb, df_teste_esc[,1]) #12.63
-
 saveRDS(grad_bst, "grad_bst_v1.rds")
 
 
@@ -343,7 +341,7 @@ saveRDS(grad_bst, "grad_bst_v1.rds")
 parametros <- list(eta = 0.1, subsample = 0.5, max_depth=6) #default
 
 X <- as.matrix(treino[c("lights", "NSM", "RH_1", "RH_2", "RH_3",
-                               "RH_5", "T6", "T7", "T8", "T9", "T_out", 
+                               "RH_5", "T3", "T6", "T7", "T8", "T9", "T_out", 
                                "Press_mm_hg", "Visibility", "Tdewpoint")])
 
 y <- as.matrix(treino[,1])
@@ -353,12 +351,10 @@ xtreme_bst_v1 <- xgboost(data = X, label = y,
                          nrounds = 500, early_stopping_rounds = 3, 
                          params = parametros, verbose = 1)
 
-xtreme_bst_v1$params$validate_parameters
-
 plot(xtreme_bst_v1$evaluation_log, type='l', col='blue')
 
 X_teste <- as.matrix(teste[c("lights", "NSM", "RH_1", "RH_2", "RH_3", 
-                                    "RH_5", "T6", "T7", "T8","T9", "T_out",
+                                    "RH_5", "T3","T6", "T7", "T8","T9", "T_out",
                                     "Press_mm_hg", "Visibility", "Tdewpoint")])
 
 y_teste <- as.matrix(teste[,1])
@@ -376,16 +372,85 @@ saveRDS(xtreme_bst_v1, "xtreme_bst_v1.rds")
 #--------------------------SALVANDO RESULTADOS---------------------------------#
 
 
-resultados_metricas <- rbind(avaliacao_rl, avaliacao_gbm, avaliacao_xgb)
+resultados_metricas <- rbind(avaliacao_rf, avaliacao_rl, avaliacao_gbm, avaliacao_xgb)
 View(resultados_metricas)
 
-write.csv(resultados_metricas, file="resultados_modelos.csv")
+write.csv(resultados_metricas, file="resultados_modelos_v1.csv")
 
-results <- read.csv(file="resultados_modelos.csv", row.names = 1)
+results <- read.csv(file="resultados_modelos_v1.csv", row.names = 1)
 
 View(results)
 #------------------------------------------------------------------------------#
 #                                IDEIAS
 
 
+#como alternativa, resolvi não excluir as variáveis de menor importância como
+#nos primeiros modelos, então uni as variáveis com alta colinearidade em T_media
+#e RH_media
 
+df_completo_mod <- modificaColunas(df_completo)
+
+particao <- createDataPartition(y=df_completo_mod$Appliances, p = 0.75, list=F)
+treino <- df_completo_mod[particao,]
+teste <- df_completo_mod[-particao,]
+#------------------------------------------------------------------------------#
+
+?randomForest
+random <- randomForest(Appliances ~ ., data = treino)
+previsoes_random <- predict(random, teste[,2:13])
+avaliacao_rf <- avaliacaoModelo('random forest', teste$Appliances, previsoes_random)
+avaliacao_rf
+
+importance(random)
+
+#------------------------------------------------------------------------------#
+X <- as.matrix(treino[,2:13])
+y <- as.matrix(treino$Appliances)
+
+parametros <- list(eta = 0.3, subsample = 0.5, max_depth=6)
+xtreme_bst_v2 <- xgboost(data = X, label = y,
+                         nrounds = 500, early_stopping_rounds = 3, 
+                         params = parametros, verbose = 1)
+
+xtreme_bst_v2$nfeatures
+
+
+X_teste <- as.matrix(teste[,2:13])
+y_teste <- as.matrix(teste$Appliances)
+
+previsoes_xgb <- predict(xtreme_bst_v2, X_teste)
+
+avaliacao_xgb <- avaliacaoModelo('XGBoost_v2',as.numeric(teste$Appliances), 
+                                 as.numeric(previsoes_xgb))
+avaliacao_xgb
+
+#------------------------------------------------------------------------------#
+grad_bst <- gbm(Appliances ~ .,
+                data = treino, distribution = 'gaussian', n.trees = 500,
+                interaction.depth = 10, cv.folds=5)
+
+#interation depth = 5 apresenta resultados bem melhores que o default = 1
+
+
+previsões_gb <- predict(grad_bst, teste[,2:13])
+
+avaliacao_gbm <- avaliacaoModelo('gradient boosting', teste$Appliances, previsões_gb)
+avaliacao_gbm
+
+#------------------------------------------------------------------------------#
+lin_reg_v1 <- lm(Appliances ~ ., data = treino)
+
+#métricas de avaliação do modelo base nos dados de teste
+
+previsões_rin_reg <- predict(lin_reg_v1, teste[,2:13])
+summary(lin_reg_v1)
+
+avaliacao_rl <- avaliacaoModelo("regressão linear", teste$Appliances,
+                                previsões_rin_reg)
+avaliacao_rl
+
+resultados <- rbind(avaliacao_rf, avaliacao_rl, avaliacao_gbm, avaliacao_xgb)
+resultados
+
+write.csv(resultados, file="resultados_modelos_v2.csv")
+resultss <- read.csv(file="resultados_modelos_v2.csv", row.names = 1)
