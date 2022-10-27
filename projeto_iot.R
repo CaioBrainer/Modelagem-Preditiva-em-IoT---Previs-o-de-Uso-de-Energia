@@ -486,3 +486,28 @@ ggplot(resultados_completo, aes(x=Modelo, y=R_Square, fill=tipo_modelo)) +
 #apresentam um desempenho ligeiramente melhor que os modelos com variáveis médias
 #o modelo random forest apresenta o melhor desempenho em seus parâmetros default
 #talvez sendo possível aprimorar seus resultados
+
+#------------------------------------------------------------------------------#
+#                     APRIMORANDO OS MODELOS RANDOM FOREST
+
+#Devido ao desempenho levemente superior do modelo com todas as variáveis,
+#iremos utiliza-lo em adição a função tuneRF para obter o melhor valor mtry que
+#melhora os resultados do modelo.
+
+
+#Utilizando tdas as variáveis
+bestmtry1 <- tuneRF(treino[,2:33], treino$Appliances, ntreeTry = 500, mtryStart = 2,
+                    stepFactor=1.5, improve=1e-5, doBest = T)
+print(bestmtry1)
+modelo_RFtuned1 <- randomForest(Appliances ~ ., data = treino, 
+                                ntree=500, mtry=4, importance=TRUE)
+previsao_RFtuned1 <- predict(modelo_RFtuned, teste[,2:33])
+avaliacaoModelo("random forest tunning", teste$Appliances, previsao_RFtuned1) 
+#rmse 11 e R²=0.85 mesmo utilizando todas as variáveis!!!
+
+importance(modelo_RFtuned1)
+
+
+
+
+
