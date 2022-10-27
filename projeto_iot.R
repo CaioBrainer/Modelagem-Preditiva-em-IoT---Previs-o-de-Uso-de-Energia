@@ -8,7 +8,6 @@
 
 #Setando o diretório do projeto
 setwd("~/machine_learning/Datasets e projetos/Projetos-7-8/Projeto 8/Modelagem_Preditiva_em_IoT/")
-
 getwd()
 
 
@@ -60,7 +59,7 @@ modificaColunas <- function(dataframe_iot) {
   
   #escalonando as variáveis numéricas
   pipeline_mod = preProcess(df_modificado[,2:13], method = c("center", "scale"))
-  df_modificado = predict(pipeline_mod, df_modificado[,1:13])
+  df_modificado = predict(pipeline_mod, df_modificado[,1:15])
   
   #tratando variáveis categóricas
   labels_Weekstatus <- LabelEncoder.fit(df_modificado$WeekStatus)
@@ -269,24 +268,23 @@ random_forest_base <- randomForest(Appliances ~ . ,data = treino, ntree = 500,
 
 importance(random_forest_base)
 
-
-
 previsoes_rf_base <- predict(random_forest_base, teste[,2:33])
 avaliacao_rf_base <- avaliacaoModelo('random forest', teste$Appliances,
                                      previsoes_rf_base)
-
 avaliacao_rf_base
-saveRDS(random_forest_base, file = "random_forest_base.rds")
+importance(random_forest_base)
 
 
-#As variáveis com maiores (>40) importâncias são: lights, NSM, RH_1, RH_2, RH_5,
-#T6,T7, T8, T9, T_out, Press_mm_hg, Visibility e Tdewpoint
+#saveRDS(random_forest_base, file = "random_forest_base.rds")
 
+#Vamos utilizar as variáveis com importância maior que 35 para gerar 
+#um novo modelo random forest
 
-#E por que não avaliar o modelo com as variáveis mais importantes?
 
 random_forest_v1 <- randomForest(Appliances ~ lights + T3 + T6 + T7 + T8 + T9 + T_out +
-                                   RH_1 + RH_2 + RH_3 +RH_5 + Press_mm_hg + NSM, 
+                                   RH_1 + RH_2 + RH_3 +RH_5 + Press_mm_hg + 
+                                    Windspeed + Visibility + Tdewpoint + NSM + 
+                                   Day_of_week + horario, 
                                  data = treino, ntree = 500,
                                  importance= TRUE)
 
@@ -294,7 +292,9 @@ random_forest_v1 <- randomForest(Appliances ~ lights + T3 + T6 + T7 + T8 + T9 + 
 previsoes_rf_v1 <- predict(random_forest_v1, teste[c("lights", "T3", "T6", "T7",
                                                      "T8", "T9","T_out", "RH_1",
                                                      "RH_2", "RH_3", "RH_5",
-                                                     "Press_mm_hg", "NSM")])
+                                                     "Press_mm_hg", "Windspeed",
+                                                      "Visibility", "Tdewpoint",
+                                                     "NSM", "Day_of_week", "horario")])
 
 avaliacao_rf_v1 <- avaliacaoModelo('random forest', teste$Appliances,
                                    previsoes_rf_v1)
@@ -306,14 +306,17 @@ avaliacao_rf_v1
 
 
 lin_reg <- lm(Appliances ~ lights + T3 + T6 + T7 + T8 + T9 + T_out +
-                   RH_1 + RH_2 + RH_3 +RH_5 + Press_mm_hg + NSM,
-                 data = treino)
+                RH_1 + RH_2 + RH_3 +RH_5 + Press_mm_hg + 
+                Windspeed + Visibility + Tdewpoint + NSM + 
+                Day_of_week + horario, data = treino)
 
 
 previsões_lr <- predict(lin_reg, teste[c("lights", "T3", "T6", "T7",
                                          "T8", "T9","T_out", "RH_1",
                                          "RH_2", "RH_3", "RH_5",
-                                         "Press_mm_hg", "NSM")])
+                                         "Press_mm_hg", "Windspeed",
+                                         "Visibility", "Tdewpoint",
+                                         "NSM", "Day_of_week", "horario")])
 
 avaliacao_lr <- avaliacaoModelo("regressão linear", teste$Appliances,
                                  previsões_lr)
@@ -325,15 +328,19 @@ avaliacao_lr
 #-------------------TREINANDO UM MODELO DE GRADIENTE BOOSTING------------------#
 
 
-grad_bst <- gbm(Appliances ~ lights + NSM + RH_1 + RH_2 + RH_3 + RH_5 + T3 + T6 + T7 + T8 
-          + T9 + T_out + Press_mm_hg,
+grad_bst <- gbm(Appliances ~ lights + T3 + T6 + T7 + T8 + T9 + T_out +
+                  RH_1 + RH_2 + RH_3 +RH_5 + Press_mm_hg + 
+                  Windspeed + Visibility + Tdewpoint + NSM + 
+                  Day_of_week + horario,
           data = treino, distribution = 'gaussian', n.trees = 500,
           interaction.depth = 6, cv.folds=5)
 
 previsões_gb <- predict(grad_bst, teste[c("lights", "T3", "T6", "T7",
-                                            "T8", "T9","T_out", "RH_1",
-                                            "RH_2", "RH_3", "RH_5",
-                                            "Press_mm_hg", "NSM")])
+                                          "T8", "T9","T_out", "RH_1",
+                                          "RH_2", "RH_3", "RH_5",
+                                          "Press_mm_hg", "Windspeed",
+                                          "Visibility", "Tdewpoint",
+                                          "NSM", "Day_of_week", "horario")])
 
 avaliacao_gbm <- avaliacaoModelo('gradient boosting', teste$Appliances, previsões_gb)
 avaliacao_gbm
@@ -347,7 +354,9 @@ parametros <- list(eta = 0.3, subsample = 1, max_depth=6) #default
 X <- as.matrix(treino[c("lights", "T3", "T6", "T7",
                         "T8", "T9","T_out", "RH_1",
                         "RH_2", "RH_3", "RH_5",
-                        "Press_mm_hg", "NSM")])
+                        "Press_mm_hg", "Windspeed",
+                        "Visibility", "Tdewpoint",
+                        "NSM", "Day_of_week", "horario")])
 
 y <- as.matrix(treino[,1])
 
@@ -360,7 +369,9 @@ xtreme_bst_v1 <- xgboost(data = X, label = y,
 X_teste <- as.matrix(teste[c("lights", "T3", "T6", "T7",
                              "T8", "T9","T_out", "RH_1",
                              "RH_2", "RH_3", "RH_5",
-                             "Press_mm_hg", "NSM")])
+                             "Press_mm_hg", "Windspeed",
+                             "Visibility", "Tdewpoint",
+                             "NSM", "Day_of_week", "horario")])
 
 y_teste <- as.matrix(teste[,1])
 
@@ -378,107 +389,92 @@ avaliacao_xgb
 
 resultados_metricas <- rbind(avaliacao_rf_base, avaliacao_rf_v1, avaliacao_lr,
                              avaliacao_gbm, avaliacao_xgb)
+
+resultados_metricas$variaveis <- c("ALL", "Most important", "Most important",
+                                   "Most important", "Most important")
 View(resultados_metricas)
 
-write.csv(resultados_metricas, file="resultados_modelos_v1.csv")
 
-results_v1 <- read.csv(file="resultados_modelos_v1.csv", row.names = 1)
-
-View(results)
 #------------------------------------------------------------------------------#
 #                                IDEIAS
 
 
 #Como alternativa, resolvi não excluir as variáveis de menor importância como
-#nos primeiros modelos (e sugerido no projeto), então uni as variáveis com alta 
+#nos modelos anteriores (e sugerido no projeto), então uni as variáveis com alta 
 #colinearidade em T_media e RH_media
 
 df_completo_mod <- modificaColunas(df_completo)
 
 particao <- createDataPartition(y=df_completo_mod$Appliances, p = 0.75, list=F)
-treino <- df_completo_mod[particao,]
-teste <- df_completo_mod[-particao,]
+treino_mod <- df_completo_mod[particao,]
+teste_mod <- df_completo_mod[-particao,]
 #------------------------------------------------------------------------------#
 
 ?randomForest
-rf2 <- randomForest(Appliances ~ ., data = treino, importance=T)
-previsoes_rf2 <- predict(rf2, teste[,2:13])
-avaliacao_rf2 <- avaliacaoModelo('random forest', teste$Appliances, previsoes_rf2)
+rf2 <- randomForest(Appliances ~ ., data = treino_mod, importance=T)
+previsoes_rf2 <- predict(rf2, teste_mod[,2:15])
+avaliacao_rf2 <- avaliacaoModelo('random forest', teste_mod$Appliances, previsoes_rf2)
+
 avaliacao_rf2
 
+#------------------------------------------------------------------------------#
+lin_reg_v2 <- lm(Appliances ~ ., data = treino_mod)
+previsões_lr2 <- predict(lin_reg_v2, teste_mod[,2:15])
+avaliacao_lr2 <- avaliacaoModelo("regressão linear", teste_mod$Appliances,
+                                 previsões_lr2)
+avaliacao_lr2
 
 #------------------------------------------------------------------------------#
-X <- as.matrix(treino[,2:13])
-y <- as.matrix(treino$Appliances)
+
+
+grad_bst2 <- gbm(Appliances ~ .,
+                 data = treino_mod, distribution = 'gaussian', n.trees = 500,
+                 interaction.depth = 6, cv.folds=5)
+
+
+
+previsões_gbm2 <- predict(grad_bst2, teste_mod[,2:15])
+
+avaliacao_gbm2 <- avaliacaoModelo('gradient boosting', teste_mod$Appliances, previsões_gbm2)
+avaliacao_gbm2
+
+#------------------------------------------------------------------------------#
+X <- as.matrix(treino_mod[,2:15])
+y <- as.matrix(treino_mod$Appliances)
 
 parametros <- list(eta = 0.3, subsample = 0.5, max_depth=6)
 xtreme_bst_v2 <- xgboost(data = X, label = y,
                          nrounds = 500, early_stopping_rounds = 3, 
-                         params = parametros, verbose = 1)
-
-xtreme_bst_v2$nfeatures
+                         params = parametros, verbose = 0)
 
 
-X_teste <- as.matrix(teste[,2:13])
-y_teste <- as.matrix(teste$Appliances)
+X_teste2 <- as.matrix(teste_mod[,2:15])
+y_teste2 <- as.matrix(teste_mod$Appliances)
 
-previsoes_xgb2 <- predict(xtreme_bst_v2, X_teste)
+previsoes_xgb2 <- predict(xtreme_bst_v2, X_teste2)
 
-avaliacao_xgb2 <- avaliacaoModelo('XGBoost',as.numeric(teste$Appliances), 
+avaliacao_xgb2 <- avaliacaoModelo('XGBoost',as.numeric(teste_mod$Appliances), 
                                  as.numeric(previsoes_xgb2))
 avaliacao_xgb2
-
-#------------------------------------------------------------------------------#
-grad_bst2 <- gbm(Appliances ~ .,
-                data = treino, distribution = 'gaussian', n.trees = 500,
-                interaction.depth = 6, cv.folds=5)
-
-#interation depth = 5 apresenta resultados bem melhores que o default = 1
-
-
-previsões_gbm2 <- predict(grad_bst2, teste[,2:13])
-
-avaliacao_gbm2 <- avaliacaoModelo('gradient boosting', teste$Appliances, previsões_gbm2)
-avaliacao_gbm2
-
-#------------------------------------------------------------------------------#
-lin_reg_v2 <- lm(Appliances ~ ., data = treino)
-
-#métricas de avaliação do modelo base nos dados de teste
-
-previsões_lr2 <- predict(lin_reg_v2, teste[,2:13])
-
-avaliacao_lr2 <- avaliacaoModelo("regressão linear", teste$Appliances,
-                                previsões_lr2)
-avaliacao_lr2
 
 
 #------------------------------------------------------------------------------#
 #                 COMPARANDO AS MÉTRICAS ENTRE OS MODELOS
 
 
-resultados <- rbind(avaliacao_rf2, avaliacao_lr2, avaliacao_gbm2, avaliacao_xgb2)
-resultados
+resultados_metricas2 <- rbind(avaliacao_rf2, avaliacao_lr2, avaliacao_gbm2, avaliacao_xgb2)
+resultados_metricas2$variaveis <- "T mean + RH mean"
 
-write.csv(resultados, file="resultados_modelos_v2.csv")
-results_V2 <- read.csv(file="resultados_modelos_v2.csv", row.names = 1)
-
-results_v1$tipo_modelo <- c("variáveis mais importantes")
-results_V2$tipo_modelo <- c("média das variáveis")
-
-
-resultados_completo <- rbind(results_v1, results_V2)
+resultados_completo <- rbind(resultados_metricas, resultados_metricas2)
 View(resultados_completo)
 
-ggplot(resultados_completo, aes(x=Modelo, y=RMSE, fill=tipo_modelo)) +
+#Graficamente
+
+ggplot(resultados_completo, aes(x=Modelo, y=RMSE, fill=variaveis)) +
          geom_bar(stat="identity", position="dodge") +
          ggtitle("RMSE")
 
-ggplot(resultados_completo, aes(x=Modelo, y=MAE, fill=tipo_modelo)) +
-  geom_bar(stat="identity", position="dodge") +
-  ggtitle("MAE")
-
-ggplot(resultados_completo, aes(x=Modelo, y=R_Square, fill=tipo_modelo)) +
+ggplot(resultados_completo, aes(x=Modelo, y=R_Square, fill=variaveis)) +
   geom_bar(stat="identity", position="dodge") +
   ggtitle("R_square")
 
@@ -495,19 +491,37 @@ ggplot(resultados_completo, aes(x=Modelo, y=R_Square, fill=tipo_modelo)) +
 #melhora os resultados do modelo.
 
 
-#Utilizando tdas as variáveis
+#Utilizando todas as variáveis
 bestmtry1 <- tuneRF(treino[,2:33], treino$Appliances, ntreeTry = 500, mtryStart = 2,
                     stepFactor=1.5, improve=1e-5, doBest = T)
 print(bestmtry1)
 modelo_RFtuned1 <- randomForest(Appliances ~ ., data = treino, 
-                                ntree=500, mtry=4, importance=TRUE)
-previsao_RFtuned1 <- predict(modelo_RFtuned, teste[,2:33])
-avaliacaoModelo("random forest tunning", teste$Appliances, previsao_RFtuned1) 
-#rmse 11 e R²=0.85 mesmo utilizando todas as variáveis!!!
+                                ntree=500, mtry=6, importance=TRUE)
 
-importance(modelo_RFtuned1)
+previsao_RFtuned1 <- predict(modelo_RFtuned1, teste[,2:33])
+
+avaliacao_rf_tunning <- avaliacaoModelo("random forest", 
+                                        teste$Appliances, previsao_RFtuned1) 
+
+avaliacao_rf_tunning$variaveis <- "ALL + Tunning"
+
+resultados_completo <- rbind(resultados_completo, avaliacao_rf_tunning)
+write.csv(resultados_completo, file = "resultados_completo.csv")
 
 
+#comparando novamente
+ggplot(resultados_completo, aes(x=Modelo, y=RMSE, fill=variaveis)) +
+  geom_bar(stat="identity", position="dodge") +
+  ggtitle("RMSE")
 
 
+#------------------------------------------------------------------------------#
+#                                FINALIZANDO
+#------------------------------------------------------------------------------#
+
+#Os modelos Random Forest apresentaram os melhores valores de RMSE e R², com
+#resultados bem próximos utilizando tanto as variáveis completas como as vari...
+#áveis com maior importância. O melhor resultado obtido foi utilizando todas as
+#variáveis e tunning, com RMSE de ~17.5 e R² de ~68. Os valores obtidos em tese
+#foram amplamente superiores ao artigo original no qual o estudo foi publicado.
 
